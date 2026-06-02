@@ -132,7 +132,6 @@ func (p *Pool) runWorker(ctx context.Context, workerID string) {
 		}
 
 		p.processJob(ctx, workerID, job)
-		job = nil // Help GC
 
 		// Aggressively free memory after each job since Ansible processes are memory-heavy
 		runtime.GC()

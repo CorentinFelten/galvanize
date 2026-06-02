@@ -36,7 +36,7 @@ func SanitizeProjectName(name string) string {
 
 func BuildComposeProject(unique bool, challengeName, teamID string) string {
 	var composeProject string
-	if unique == true {
+	if unique {
 		composeProject = "global-" + challengeName
 		composeProject = SanitizeProjectName(composeProject)
 	} else {

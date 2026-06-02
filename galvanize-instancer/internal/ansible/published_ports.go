@@ -13,17 +13,6 @@ var knownDockerProtocols = map[string]struct{}{
 	"sctp": {},
 }
 
-// normalizePublishedPorts supports optional protocol hints in published_ports,
-// e.g. "22/ssh" or "8080:80/http".
-//
-// It returns:
-// - a shallow-copied deploy params map where published_ports entries are made Docker-compatible,
-// - a target-port to connection-scheme map used when building connection info.
-func normalizePublishedPorts(params map[string]interface{}) (map[string]interface{}, map[int]string) {
-	normalized, hints, _ := normalizePublishedPortsWithState(params, false, nil, false)
-	return normalized, hints
-}
-
 func randomizableContainerPorts(params map[string]interface{}) []string {
 	rawPorts, ok := params["published_ports"]
 	if !ok {
