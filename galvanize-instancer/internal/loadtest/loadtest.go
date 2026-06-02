@@ -304,9 +304,9 @@ func (s *stats) report(out io.Writer, phase string, elapsed time.Duration) {
 		minLatency = 0
 	}
 
-	fmt.Fprintf(out, "\nPhase %s\n", phase)
-	fmt.Fprintf(out, "  Duration: %s\n", elapsed)
-	fmt.Fprintf(out, "  Total: %d  Success: %d  Errors: %d\n", total, success, errors)
+	_, _ = fmt.Fprintf(out, "\nPhase %s\n", phase)
+	_, _ = fmt.Fprintf(out, "  Duration: %s\n", elapsed)
+	_, _ = fmt.Fprintf(out, "  Total: %d  Success: %d  Errors: %d\n", total, success, errors)
 	fmt.Fprintf(out, "  Latency: min %s  avg %s  max %s\n", minLatency, avgLatency, maxLatency)
 
 	s.mu.Lock()
@@ -315,10 +315,10 @@ func (s *stats) report(out io.Writer, phase string, elapsed time.Duration) {
 		for code, count := range s.statuses {
 			fmt.Fprintf(out, " %d=%d", code, count)
 		}
-		fmt.Fprintln(out, "")
+		_, _ = fmt.Fprintln(out, "")
 	}
 	if len(s.errSamples) > 0 {
-		fmt.Fprintln(out, "  Error samples:")
+		_, _ = fmt.Fprintln(out, "  Error samples:")
 		for _, sample := range s.errSamples {
 			fmt.Fprintf(out, "    - %s\n", sample)
 		}

@@ -91,7 +91,7 @@ func (s *Server) DeployAdminInstance(ctx echo.Context) error {
 		zap.S().Errorf("Failed to get challenge infos: %v", err)
 		return ctx.JSON(400, api.Error{Message: utils.Ptr(fmt.Sprintf("Failed to get challenge info: %v", err))})
 	}
-	if chall.Unique != true {
+	if !chall.Unique {
 		zap.S().Errorf("Attempt to admin-deploy non-unique challenge %s", req.ChallengeName)
 		return ctx.JSON(400, api.Error{Message: utils.Ptr("Challenge is not unique")})
 	}

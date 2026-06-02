@@ -15,7 +15,7 @@ func main() {
 	} else {
 		logger.Init(false)
 	}
-	defer zap.L().Sync()
+	defer func() { _ = zap.L().Sync() }()
 	cmd.SetVersion(Version)
 	cmd.Execute()
 }

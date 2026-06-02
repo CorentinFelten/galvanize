@@ -43,7 +43,7 @@ func RegisterSSHHosts(cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Register all hosts that need it
 	for _, host := range hostsToRegister {

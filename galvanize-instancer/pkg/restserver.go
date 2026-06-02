@@ -152,7 +152,7 @@ func (s *Server) DeployInstance(ctx echo.Context) error {
 		zap.S().Errorf("Failed to get challenge infos: %v", err)
 		return ctx.JSON(400, api.Error{Message: utils.HTTP500Debug(fmt.Sprintf("Failed to get challenge info: %v", err))}) //TODO notify admin
 	}
-	if chall.Unique == true {
+	if chall.Unique {
 		zap.S().Errorf("Attempt to deploy unique challenge %s for team %s", req.ChallengeName, claims.TeamID)
 		return ctx.JSON(403, api.Error{Message: utils.Ptr("Unauthorized")})
 	}
@@ -238,7 +238,7 @@ func (s *Server) GetInstanceStatus(ctx echo.Context) error {
 		return ctx.JSON(400, api.Error{Message: utils.Ptr("Invalid challenge")})
 	}
 	var deployment *models.Deployment
-	if chall.Unique == true {
+	if chall.Unique {
 		zap.S().Debugf("Status request received for challenge %s", chall.Name)
 		deployment, err = models.GetUniqueDeployment(s.db, chall.Category, chall.Name, false)
 	} else {
