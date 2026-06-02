@@ -2,6 +2,17 @@
 
 ## vX.X.X (YYYY-MM-DD)
 
+### Added
+- Auto-detect a standalone Docker Compose file (`compose.yaml`, `compose.yml`, `docker-compose.yaml`, or `docker-compose.yml`) next to `challenge.yml` for multi-service challenges, so authors no longer have to embed the whole document as an inline `compose_definition` string
+- Optional `deploy_parameters.compose_file` to point at a differently named compose file (relative to the challenge directory)
+- Default `playbook_name` to `custom_compose` when a compose file is detected and no playbook is set explicitly
+- `deploy_parameters.expose` block for compose challenges: automatically wire Traefik (http: external network + router/service labels + domain) and published ports (tcp: reuses per-team host-port randomization/persistence), removing the need to hand-write Traefik labels, attach networks, or pick host ports. Multiple HTTP exposures get per-service subdomains, and connection info is derived automatically
+- Validate `expose` entries at challenge index time (structure + that referenced services exist in the compose definition)
+- Document `traefik_network` in `config.example.yaml` (required for http challenges and http exposures)
+
+### Changed
+- `example/custom_compose` now demonstrates the standalone `docker-compose.yml` workflow with an `expose` block; inline `compose_definition` still works and takes precedence over a sibling file
+
 ## v0.7.0 (2026-03-18)
 
 ### Added

@@ -22,6 +22,14 @@ func writeChallenge(t *testing.T, baseDir, subdir, content string) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "challenge.yml"), []byte(content), 0o644))
 }
 
+// writeFile is a helper that creates an arbitrary file inside baseDir/subdir/.
+func writeFile(t *testing.T, baseDir, subdir, name, content string) {
+	t.Helper()
+	dir := filepath.Join(baseDir, subdir)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644))
+}
+
 func TestNewChallengeIndex(t *testing.T) {
 	dir := t.TempDir()
 
@@ -244,6 +252,170 @@ deploy_parameters:
 	assert.True(t, names["http"])
 	assert.True(t, names["rsa"])
 	assert.False(t, names["bof"])
+}
+
+func TestLoadComposeDefinition_AutoDetectsSiblingFile(t *testing.T) {
+	dir := t.TempDir()
+
+	// No playbook_name and no inline compose_definition: a standalone
+	// compose file next to challenge.yml should be picked up automatically.
+	writeChallenge(t, dir, "web", `
+name: multi
+category: web
+type: zync
+deploy_parameters:
+  unique: false
+`)
+	compose := `services:
+  web:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+  db:
+    image: postgres:16-alpine
+`
+	writeFile(t, dir, "web", "docker-compose.yml", compose)
+
+	idx, err := NewChallengeIndex(dir)
+	require.NoError(t, err)
+
+	chall, err := idx.Get("web", "multi")
+	require.NoError(t, err)
+	assert.Equal(t, "custom_compose", chall.PlaybookName, "playbook_name should default to custom_compose")
+	assert.Equal(t, compose, chall.DeployParameters["compose_definition"])
+}
+
+func TestLoadComposeDefinition_PrefersCanonicalFileName(t *testing.T) {
+	dir := t.TempDir()
+
+	writeChallenge(t, dir, "web", `
+name: multi
+category: web
+type: zync
+deploy_parameters:
+  unique: false
+`)
+	// compose.yaml has higher precedence than docker-compose.yml.
+	writeFile(t, dir, "web", "compose.yaml", "services:\n  a:\n    image: a\n")
+	writeFile(t, dir, "web", "docker-compose.yml", "services:\n  b:\n    image: b\n")
+
+	idx, err := NewChallengeIndex(dir)
+	require.NoError(t, err)
+
+	chall, err := idx.Get("web", "multi")
+	require.NoError(t, err)
+	assert.Contains(t, chall.DeployParameters["compose_definition"], "image: a")
+	assert.NotContains(t, chall.DeployParameters["compose_definition"], "image: b")
+}
+
+func TestLoadComposeDefinition_ExplicitComposeFile(t *testing.T) {
+	dir := t.TempDir()
+
+	writeChallenge(t, dir, "web", `
+name: multi
+category: web
+playbook_name: custom_compose
+type: zync
+deploy_parameters:
+  unique: false
+  compose_file: stack.yaml
+`)
+	writeFile(t, dir, "web", "stack.yaml", "services:\n  web:\n    image: nginx\n")
+
+	idx, err := NewChallengeIndex(dir)
+	require.NoError(t, err)
+
+	chall, err := idx.Get("web", "multi")
+	require.NoError(t, err)
+	assert.Contains(t, chall.DeployParameters["compose_definition"], "image: nginx")
+	// The helper key should be stripped so it does not leak into Ansible vars.
+	_, ok := chall.DeployParameters["compose_file"]
+	assert.False(t, ok, "compose_file should be removed after loading")
+}
+
+func TestLoadComposeDefinition_InlineTakesPrecedence(t *testing.T) {
+	dir := t.TempDir()
+
+	writeChallenge(t, dir, "web", `
+name: multi
+category: web
+playbook_name: custom_compose
+type: zync
+deploy_parameters:
+  unique: false
+  compose_definition: |-
+    services:
+      inline:
+        image: inline-image
+`)
+	// A sibling file exists but must be ignored in favour of the inline value.
+	writeFile(t, dir, "web", "docker-compose.yml", "services:\n  file:\n    image: file-image\n")
+
+	idx, err := NewChallengeIndex(dir)
+	require.NoError(t, err)
+
+	chall, err := idx.Get("web", "multi")
+	require.NoError(t, err)
+	assert.Contains(t, chall.DeployParameters["compose_definition"], "inline-image")
+	assert.NotContains(t, chall.DeployParameters["compose_definition"], "file-image")
+}
+
+func TestLoadComposeDefinition_MissingExplicitFileErrors(t *testing.T) {
+	dir := t.TempDir()
+
+	writeChallenge(t, dir, "web", `
+name: multi
+category: web
+playbook_name: custom_compose
+type: zync
+deploy_parameters:
+  unique: false
+  compose_file: nope.yaml
+`)
+
+	_, err := NewChallengeIndex(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "compose_file")
+}
+
+func TestLoadComposeDefinition_NoServicesSectionErrors(t *testing.T) {
+	dir := t.TempDir()
+
+	writeChallenge(t, dir, "web", `
+name: multi
+category: web
+type: zync
+deploy_parameters:
+  unique: false
+`)
+	writeFile(t, dir, "web", "docker-compose.yml", "version: \"3\"\nnetworks:\n  default: {}\n")
+
+	_, err := NewChallengeIndex(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "services")
+}
+
+func TestLoadComposeDefinition_NoComposeFileLeavesHTTPUntouched(t *testing.T) {
+	dir := t.TempDir()
+
+	writeChallenge(t, dir, "web", `
+name: http
+category: web
+playbook_name: http
+type: zync
+deploy_parameters:
+  unique: false
+  image: nginx:latest
+`)
+
+	idx, err := NewChallengeIndex(dir)
+	require.NoError(t, err)
+
+	chall, err := idx.Get("web", "http")
+	require.NoError(t, err)
+	assert.Equal(t, "http", chall.PlaybookName)
+	_, ok := chall.DeployParameters["compose_definition"]
+	assert.False(t, ok, "non-compose challenges should not gain a compose_definition")
 }
 
 func TestBuildIndex_UniqueChallenge(t *testing.T) {

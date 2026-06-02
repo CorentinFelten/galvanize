@@ -5,12 +5,82 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/28Pollux28/galvanize/pkg/config"
 	yaml "github.com/oasdiff/yaml3"
 	"go.uber.org/zap"
 )
+
+// composeFileNames lists the standard Docker Compose file names that are
+// auto-detected next to a challenge.yml, in the order Docker Compose itself
+// resolves them.
+var composeFileNames = []string{
+	"compose.yaml",
+	"compose.yml",
+	"docker-compose.yaml",
+	"docker-compose.yml",
+}
+
+// Exposure types supported by the expose block.
+const (
+	ExposeHTTP = "http"
+	ExposeTCP  = "tcp"
+)
+
+// Exposure declares how a single Docker Compose service should be reached by
+// players. It lets compose challenges get the same automatic networking wiring
+// (Traefik for http, published host ports for tcp) that the http/tcp playbooks
+// provide for single-container challenges.
+type Exposure struct {
+	// Service is the compose service name to expose.
+	Service string
+	// Port is the container port the service listens on.
+	Port int
+	// Type is either "http" (routed through Traefik) or "tcp" (published port).
+	Type string
+	// Scheme overrides the URL scheme used in connection info (e.g. "ssh").
+	Scheme string
+}
+
+// ParseExposures reads the optional deploy_parameters.expose list. It returns
+// nil when no expose block is present. Each entry is validated for structure.
+func ParseExposures(params map[string]interface{}) ([]Exposure, error) {
+	raw, ok := params["expose"]
+	if !ok {
+		return nil, nil
+	}
+	list, ok := raw.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("expose must be a list of exposure entries")
+	}
+
+	exposures := make([]Exposure, 0, len(list))
+	for i, item := range list {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("expose[%d] must be a mapping", i)
+		}
+		exp := Exposure{
+			Service: toStringField(m, "service"),
+			Port:    toIntField(m, "port"),
+			Type:    strings.ToLower(toStringField(m, "type")),
+			Scheme:  toStringField(m, "scheme"),
+		}
+		if exp.Service == "" {
+			return nil, fmt.Errorf("expose[%d]: missing service", i)
+		}
+		if exp.Port <= 0 {
+			return nil, fmt.Errorf("expose[%d] (%s): port must be a positive integer", i, exp.Service)
+		}
+		if exp.Type != ExposeHTTP && exp.Type != ExposeTCP {
+			return nil, fmt.Errorf("expose[%d] (%s): type must be %q or %q", i, exp.Service, ExposeHTTP, ExposeTCP)
+		}
+		exposures = append(exposures, exp)
+	}
+	return exposures, nil
+}
 
 func toStringField(m map[string]interface{}, key string) string {
 	if v, ok := m[key]; ok {
@@ -59,6 +129,7 @@ type Challenge struct {
 	Type             string                 `yaml:"type"`
 	Unique           bool                   `yaml:"-"`
 	ResourceLimits   config.ResourceLimits  `yaml:"-"`
+	Dir              string                 `yaml:"-"`
 	DeployParameters map[string]interface{} `yaml:"deploy_parameters"`
 }
 
@@ -153,6 +224,12 @@ func parseChallenge(challengeFilePath string) (*Challenge, error) {
 	if challenge.Type == "" {
 		return nil, fmt.Errorf("missing type in challenge file")
 	}
+	challenge.Dir = filepath.Dir(challengeFilePath)
+
+	if challenge.DeployParameters == nil {
+		challenge.DeployParameters = map[string]interface{}{}
+	}
+
 	if unique, ok := challenge.DeployParameters["unique"]; ok {
 		if b, ok := unique.(bool); ok && b {
 			challenge.Unique = true
@@ -167,5 +244,107 @@ func parseChallenge(challengeFilePath string) (*Challenge, error) {
 		}
 	}
 
+	if err := loadComposeDefinition(&challenge); err != nil {
+		return nil, err
+	}
+
+	if err := validateExposures(&challenge); err != nil {
+		return nil, err
+	}
+
 	return &challenge, nil
+}
+
+// loadComposeDefinition lets authors keep a standalone Docker Compose file
+// (e.g. compose.yaml or docker-compose.yml) next to challenge.yml instead of
+// embedding the whole document as a multiline string under
+// deploy_parameters.compose_definition.
+//
+// Resolution order:
+//  1. An inline deploy_parameters.compose_definition always wins.
+//  2. An explicit deploy_parameters.compose_file (path relative to the
+//     challenge directory).
+//  3. Auto-detected standard Compose file names in the challenge directory.
+//
+// When a file is loaded, its contents are placed in compose_definition so the
+// existing custom_compose playbook consumes it unchanged, and playbook_name
+// defaults to "custom_compose" if the author did not set one.
+func loadComposeDefinition(c *Challenge) error {
+	if def, ok := c.DeployParameters["compose_definition"].(string); ok && strings.TrimSpace(def) != "" {
+		return nil
+	}
+
+	var composePath string
+	if explicit := toStringField(c.DeployParameters, "compose_file"); explicit != "" {
+		composePath = filepath.Join(c.Dir, explicit)
+		if _, err := os.Stat(composePath); err != nil {
+			return fmt.Errorf("compose_file %q for challenge %q not found: %w", explicit, c.Name, err)
+		}
+		delete(c.DeployParameters, "compose_file")
+	} else {
+		for _, name := range composeFileNames {
+			candidate := filepath.Join(c.Dir, name)
+			if _, err := os.Stat(candidate); err == nil {
+				composePath = candidate
+				break
+			}
+		}
+	}
+
+	if composePath == "" {
+		return nil
+	}
+
+	data, err := os.ReadFile(composePath)
+	if err != nil {
+		return fmt.Errorf("failed to read compose file %s: %w", composePath, err)
+	}
+
+	var parsed map[string]interface{}
+	if err := yaml.Unmarshal(data, &parsed); err != nil {
+		return fmt.Errorf("invalid compose file %s: %w", composePath, err)
+	}
+	if _, ok := parsed["services"]; !ok {
+		return fmt.Errorf("compose file %s has no 'services' section", composePath)
+	}
+
+	c.DeployParameters["compose_definition"] = string(data)
+	if c.PlaybookName == "" {
+		c.PlaybookName = "custom_compose"
+	}
+	zap.S().Infof("Loaded compose definition for challenge %q from %s", c.Name, filepath.Base(composePath))
+
+	return nil
+}
+
+// validateExposures checks the optional expose block: entries must be
+// well-formed and reference services that exist in the compose definition.
+// It runs after the compose definition has been resolved so authors get clear
+// errors at index time rather than at deploy time.
+func validateExposures(c *Challenge) error {
+	exposures, err := ParseExposures(c.DeployParameters)
+	if err != nil {
+		return fmt.Errorf("challenge %q: %w", c.Name, err)
+	}
+	if len(exposures) == 0 {
+		return nil
+	}
+
+	def, ok := c.DeployParameters["compose_definition"].(string)
+	if !ok || strings.TrimSpace(def) == "" {
+		return fmt.Errorf("challenge %q: expose requires a compose definition (compose file or compose_definition)", c.Name)
+	}
+
+	var parsed struct {
+		Services map[string]interface{} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal([]byte(def), &parsed); err != nil {
+		return fmt.Errorf("challenge %q: invalid compose definition: %w", c.Name, err)
+	}
+	for _, exp := range exposures {
+		if _, ok := parsed.Services[exp.Service]; !ok {
+			return fmt.Errorf("challenge %q: expose references unknown service %q", c.Name, exp.Service)
+		}
+	}
+	return nil
 }

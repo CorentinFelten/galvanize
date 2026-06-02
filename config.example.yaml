@@ -31,4 +31,7 @@ instancer:
     memory: "512M"        # Memory limit per container (e.g. "256M", "512M", "1G")
     pids_limit: 256       # Max number of PIDs per container (fork bomb protection)
   extra_deployment_parameters: # Additional parameters for deployment (added to vars in Ansible)
+    # Name of the external Docker network Traefik watches on the target host(s).
+    # Required for http challenges and for http exposures in compose challenges.
+    traefik_network: "traefik"
     example_param: "example_value"

@@ -90,9 +90,11 @@ All endpoints except `/health` require a JWT bearer token. Tokens are generated 
 
 ## Challenge Definitions
 
-Example challenge file:
+Example challenge files (one per playbook type):
 
-- `data/challenges/example/challenge.yml`
+- `data/challenges/example/http/challenge.yml`
+- `data/challenges/example/tcp/challenge.yml`
+- `data/challenges/example/custom_compose/challenge.yml` (with a standalone `docker-compose.yml`)
 
 Key fields:
 
@@ -100,6 +102,83 @@ Key fields:
 - `playbook_name`: `http`, `tcp`, or `custom_compose`
 - `deploy_parameters`: image, ports, env, or Compose definition
 - `flags`, `value`, `description`, `tags`
+
+### Multi-service / Docker Compose challenges
+
+For challenges that need more than one container (databases, sidecars, custom
+networks/volumes), drop a standard Docker Compose file next to your
+`challenge.yml`:
+
+```
+data/challenges/web/my-chall/
+├── challenge.yml
+└── docker-compose.yml
+```
+
+Galvanize auto-detects the first of `compose.yaml`, `compose.yml`,
+`docker-compose.yaml`, or `docker-compose.yml` in the challenge directory,
+validates it, and deploys it. When a compose file is present, `playbook_name`
+defaults to `custom_compose`, so a minimal `challenge.yml` is enough:
+
+```yaml
+name: my-chall
+author: YourName
+category: web
+type: zync
+
+deploy_parameters:
+  unique: false
+```
+
+This lets you develop and test the stack locally with a plain
+`docker compose up`, then ship the file unchanged.
+
+#### Exposing services (`expose`)
+
+Compose challenges no longer need hand-written Traefik labels, manual network
+wiring, or hand-picked host ports. Declare an `expose` block and Galvanize wires
+the networking for you — the same automation the `http`/`tcp` playbooks provide
+for single containers:
+
+```yaml
+deploy_parameters:
+  unique: false
+  expose:
+    - service: web      # HTTP via Traefik → auto domain + SSL
+      port: 80
+      type: http
+    - service: ssh      # raw TCP → published host port
+      port: 22
+      type: tcp
+      scheme: ssh       # optional, only affects the rendered connection URL
+```
+
+For each entry Galvanize will, on deploy:
+
+- `type: http` — attach the service to the external Traefik network, add the
+  `traefik.enable` + router/service labels, and route
+  `https://<project>.<instancer_host>/` to it (when more than one HTTP service
+  is exposed, each gets a `<service>-<project>.<instancer_host>` subdomain).
+  Requires `traefik_network` in `instancer.extra_deployment_parameters`.
+- `type: tcp` — publish the container port. With
+  `instancer.randomize_published_ports` enabled, the host port is randomized per
+  team and persisted, so instances don't collide.
+
+Connection info is returned automatically from the resulting Traefik route or
+published port.
+
+Notes:
+
+- Use `deploy_parameters.compose_file: <name>` to point at a differently named
+  file (relative to the challenge directory).
+- An inline `deploy_parameters.compose_definition` string still works and takes
+  precedence over any compose file, so existing challenges are unaffected.
+- `expose` is optional: if you prefer, you can still hand-write Traefik labels
+  and `ports:` in the compose file and omit `expose` entirely.
+- The project name is generated automatically per team; do not set
+  `container_name` in services or instances will collide.
+- Image `build:` contexts and host bind mounts reference paths on the **target
+  deploy host**, not the instancer — prefer pre-built images.
 
 ## Troubleshooting
 

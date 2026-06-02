@@ -46,11 +46,19 @@ func (a *AnsibleDeployer) Deploy(ctx context.Context, conf *config.Config, chall
 		existingBindings := loadPortBindingsFromDB(conf.Instancer.DBPath, key)
 		if randomizePorts {
 			randomizable := randomizableContainerPorts(chall.DeployParameters)
+			randomizable = append(randomizable, exposeTCPContainerPorts(chall.DeployParameters)...)
 			existingBindings = ensureRandomPortBindingsInDB(conf.Instancer.DBPath, key, randomizable)
 		}
 		normalizedParams, protocolHints, _ := normalizePublishedPortsWithState(chall.DeployParameters, randomizePorts, existingBindings, false)
 		if randomizePorts {
 			savePortBindingsToDB(conf.Instancer.DBPath, key, existingBindings)
+		}
+		exposeHints, err := applyComposeExposures(conf, chall, teamID, normalizedParams, existingBindings)
+		if err != nil {
+			return "", fmt.Errorf("failed to apply compose exposures: %w", err)
+		}
+		for port, scheme := range exposeHints {
+			protocolHints[port] = scheme
 		}
 		executor, resultsBuff := PreparePlaybook(conf, "create", chall, teamID, normalizedParams)
 
@@ -98,6 +106,9 @@ func (a *AnsibleDeployer) Terminate(ctx context.Context, conf *config.Config, ch
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		existingBindings := loadPortBindingsFromDB(conf.Instancer.DBPath, key)
 		normalizedParams, _, _ := normalizePublishedPortsWithState(chall.DeployParameters, randomizePorts, existingBindings, false)
+		if _, err := applyComposeExposures(conf, chall, teamID, normalizedParams, existingBindings); err != nil {
+			return fmt.Errorf("failed to apply compose exposures: %w", err)
+		}
 		executor, resultsBuff := PreparePlaybook(conf, "delete", chall, teamID, normalizedParams)
 
 		if err := executor.Execute(ctx); err != nil {

@@ -4,30 +4,50 @@ category: web
 
 type: zync
 
-# The 'custom_compose' playbook deploys an arbitrary Docker Compose definition.
-# Use this when a challenge needs multiple services, custom networks, or volumes.
-# Resource limits are applied to every service in the definition.
-playbook_name: custom_compose
+# Multi-service challenges just need a standard Docker Compose file next to
+# this challenge.yml. Galvanize auto-detects compose.yaml, compose.yml,
+# docker-compose.yaml, or docker-compose.yml and deploys it for you.
+#
+# Because a compose file is present, playbook_name defaults to
+# "custom_compose" and can be omitted. You can still set it explicitly:
+# playbook_name: custom_compose
+#
+# This means you can develop and test the stack locally with a plain
+# `docker compose up`, then drop the file in here unchanged.
 
 deploy_parameters:
   unique: false
 
-  # Inline Docker Compose definition.
-  # The project name is generated automatically.
-  compose_definition: |-
-    services:
-      web:
-        image: nginx:alpine
-        ports:
-          - "80:80"
-        environment:
-          FLAG: "flag{example_custom}"
-        depends_on:
-          - db
-      db:
-        image: postgres:16-alpine
-        environment:
-          POSTGRES_PASSWORD: secret
+  # 'expose' lets Galvanize do the networking wiring for you, just like the
+  # http/tcp playbooks do for single-container challenges. Each entry names a
+  # service from the compose file, its container port, and how to reach it:
+  #
+  #   type: http  -> routed through Traefik (auto domain + SSL). Requires
+  #                  'traefik_network' in extra_deployment_parameters.
+  #   type: tcp   -> published as a host port. With
+  #                  instancer.randomize_published_ports enabled, the host port
+  #                  is randomized per team to avoid collisions.
+  #
+  # You no longer need to hand-write Traefik labels, attach the external
+  # network, or pick host ports yourself.
+  expose:
+    - service: web
+      port: 80
+      type: http
+    # - service: ssh
+    #   port: 22
+    #   type: tcp
+    #   scheme: ssh   # optional, used only to render nicer connection URLs
+
+  # By default the sibling compose file is used automatically. To point at a
+  # differently named file (relative to this directory), set:
+  # compose_file: stack.yaml
+  #
+  # Alternatively, you can still inline the whole definition as a string:
+  # compose_definition: |-
+  #   services:
+  #     web:
+  #       image: nginx:alpine
 
   # Override global default_resource_limits for this challenge.
   # Applied to every service in the compose definition.
@@ -39,8 +59,9 @@ deploy_parameters:
 value: 7
 
 description: |-
-  Example custom compose challenge. Multiple services are deployed using
-  an inline Docker Compose definition.
+  Example custom compose challenge. Multiple services are deployed from a
+  standalone docker-compose.yml file, and the web service is exposed over HTTP
+  via Traefik using the 'expose' block.
 
 flags:
   - flag{example_custom}
