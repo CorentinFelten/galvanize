@@ -1,6 +1,6 @@
 package main
 
 const (
-	Version = "0.7.0"
+	Version = "0.7.1"
 	test    = 123
 )
