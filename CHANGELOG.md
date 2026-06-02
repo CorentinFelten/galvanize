@@ -2,6 +2,8 @@
 
 ## vX.X.X (YYYY-MM-DD)
 
+## v0.7.1 (2026-06-02)
+
 ### Added
 - Auto-detect a standalone Docker Compose file (`compose.yaml`, `compose.yml`, `docker-compose.yaml`, or `docker-compose.yml`) next to `challenge.yml` for multi-service challenges, so authors no longer have to embed the whole document as an inline `compose_definition` string
 - Optional `deploy_parameters.compose_file` to point at a differently named compose file (relative to the challenge directory)
