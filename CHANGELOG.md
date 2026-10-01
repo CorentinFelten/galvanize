@@ -2,6 +2,9 @@
 
 ## vX.X.X (YYYY-MM-DD)
 
+### Fixed
+- `models.GetExpiredDeployments` queried a column that does not exist (`expired_at` instead of `expires_at`), so it always failed. It now shares `models.GetDeploymentsExpiringBy` with the expiry scheduler, and like it leaves out unique deployments, which never expire
+
 ## v0.7.1 (2026-06-02)
 
 ### Added
