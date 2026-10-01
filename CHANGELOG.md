@@ -2,6 +2,10 @@
 
 ## vX.X.X (YYYY-MM-DD)
 
+### Fixed
+- `randomized_port_min` and `randomized_port_max` are now honored: randomized host ports were always picked from 20000-60999. Each bound still defaults (20000 and 60999) when unset; an invalid range (outside 1-65535, or a minimum above the maximum) fails startup, and a config reload with one keeps the current config
+- When random picks keep colliding, a free port of the range is taken in order, so a nearly full range is still used up. When no port is left, or the port bindings store cannot be opened, the deployment fails with a clear error instead of publishing the port on an ephemeral host port outside the range
+
 ## v0.7.1 (2026-06-02)
 
 ### Added
