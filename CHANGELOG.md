@@ -2,6 +2,13 @@
 
 ## vX.X.X (YYYY-MM-DD)
 
+### Fixed
+- Same-named challenges in different categories no longer collide. The category is now part of the deploy check against the JWT (a token for `web/login` cannot deploy or terminate `pwn/login`), of the per-instance lock, and of the Docker Compose project name, which also names the instance's subdomain
+- Project names end with a real hash of the instance's identity: the previous suffix was always `706f6c`, since `sha1.New().Sum(name)` appended the hash of nothing to the name instead of hashing it. Names are also cut to fit a 63-character DNS label
+
+### Upgrade notes
+- Project names, and so the subdomains of new instances, change format (e.g. `polypwn-web-login-team1-<hash>`). Instances already running keep their name; terminating them also removes the project under its previous name, so upgrading does not leave containers behind
+
 ## v0.7.1 (2026-06-02)
 
 ### Added
