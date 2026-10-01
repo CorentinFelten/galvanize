@@ -2,6 +2,13 @@
 
 ## vX.X.X (YYYY-MM-DD)
 
+### Fixed
+- One invalid `challenge.yml` no longer takes every challenge down: it stopped Galvanize from starting, or made `/admin/reload-challs` fail. Files that cannot be parsed (including a bad compose file), unreadable directories and challenges declaring an already indexed `category/name` are now skipped and logged, and the other challenges are indexed
+- A missing or unreadable challenge directory makes `BuildIndex` return an error instead of panicking; a failed reload keeps the current index
+
+### Changed
+- `/admin/reload-challs` returns `{"indexed": <count>, "skipped": [{"path", "reason"}]}` instead of an empty body
+
 ## v0.7.1 (2026-06-02)
 
 ### Added
