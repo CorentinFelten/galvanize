@@ -2,6 +2,9 @@
 
 ## vX.X.X (YYYY-MM-DD)
 
+### Fixed
+- Connection info lists every endpoint of an instance, one per line, ordered by compose service: each Traefik-routed host as `https://<host>/`, then each published port as `<scheme>://<host>:<port>` (its protocol hint, or `tcp`/`udp`). Only the first container with a route or a published port was reported, so a challenge with, for example, a web front end and an SSH service showed only one of them, depending on the order Ansible listed the containers. Only routers' `.rule` labels are read, so other Traefik labels set by challenge authors (entrypoints, tls, middlewares) no longer make the route random, and containers with `traefik.enable=false` are skipped
+
 ## v0.7.3 (2026-10-01)
 
 ### Fixed
