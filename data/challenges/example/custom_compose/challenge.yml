@@ -30,6 +30,10 @@ deploy_parameters:
   #
   # You no longer need to hand-write Traefik labels, attach the external
   # network, or pick host ports yourself.
+  #
+  # Several services can be exposed: players get every endpoint, one per line
+  # (https://<subdomain>/ for http, <scheme or tcp>://<host>:<port> for tcp),
+  # ordered by service name.
   expose:
     - service: web
       port: 80
