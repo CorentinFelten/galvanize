@@ -2,6 +2,9 @@
 
 ## vX.X.X (YYYY-MM-DD)
 
+### Added
+- `GET /admin/version` returns the running version (`{"version": "0.7.3"}`), e.g. for Zync to check compatibility. It requires an admin token: requests without a valid token get 401 and player tokens 403, so the version is never disclosed to players or unauthenticated clients
+
 ## v0.7.3 (2026-10-01)
 
 ### Fixed
