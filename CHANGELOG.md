@@ -5,6 +5,9 @@
 ### Added
 - `GET /admin/version` returns the running version (`{"version": "0.7.3"}`), e.g. for Zync to check compatibility. It requires an admin token: requests without a valid token get 401 and player tokens 403, so the version is never disclosed to players or unauthenticated clients
 
+### Changed
+- The API port no longer serves `/metrics`, which was exempt from authentication and exposed challenge names and team IDs to anyone who could reach the API. Metrics stay on the metrics server (port 5001, basic auth when `metrics.password` is set), which the provided Prometheus configuration already scrapes
+
 ## v0.7.3 (2026-10-01)
 
 ### Fixed
