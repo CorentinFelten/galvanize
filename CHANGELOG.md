@@ -2,6 +2,15 @@
 
 ## vX.X.X (YYYY-MM-DD)
 
+### Added
+- `GET /admin/version` returns the running version (`{"version": "0.7.3"}`), e.g. for Zync to check compatibility. It requires an admin token: requests without a valid token get 401 and player tokens 403, so the version is never disclosed to players or unauthenticated clients
+
+### Changed
+- The API port no longer serves `/metrics`, which was exempt from authentication and exposed challenge names and team IDs to anyone who could reach the API. Metrics stay on the metrics server (port 5001, basic auth when `metrics.password` is set), which the provided Prometheus configuration already scrapes
+
+### Fixed
+- Connection info lists every endpoint of an instance, one per line, ordered by compose service: each Traefik-routed host as `https://<host>/`, then each published port as `<scheme>://<host>:<port>` (its protocol hint, or `tcp`/`udp`). Only the first container with a route or a published port was reported, so a challenge with, for example, a web front end and an SSH service showed only one of them, depending on the order Ansible listed the containers. Only routers' `.rule` labels are read, so other Traefik labels set by challenge authors (entrypoints, tls, middlewares) no longer make the route random, and containers with `traefik.enable=false` are skipped
+
 ## v0.7.3 (2026-10-01)
 
 ### Fixed
